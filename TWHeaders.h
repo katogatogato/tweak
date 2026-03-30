@@ -32,6 +32,7 @@ static NSMutableDictionary<NSString*, NSValue*>* originalFontsIMP;
 static id _PasteboardChangeObserver;
 static NSDictionary<NSString*, NSArray<NSString*>*> *trackingParams;
 static NSString *_lastCopiedURL;
+static NSCache<NSString*, NSString*> *gTweetLanguageCache = nil;
 
 @interface T1AppDelegate : UIResponder <UIApplicationDelegate>
 @property(retain, nonatomic) UIWindow *window;
