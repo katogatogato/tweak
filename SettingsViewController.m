@@ -445,6 +445,7 @@ PSSpecifier *photosVideosSection = [self newSectionWithTitle:[[BHTBundle sharedB
         PSSpecifier *urlHost = [self newButtonCellWithTitle:[[BHTBundle sharedBundle] localizedStringForKey:@"SELECT_URL_HOST_AFTER_COPY_OPTION_TITLE"] detailTitle:[[NSUserDefaults standardUserDefaults] objectForKey:@"tweet_url_host"] dynamicRule:@"strip_tracking_params, ==, 0" action:@selector(showURLHostSelectionViewController:)];
 
         PSSpecifier *enableTranslate = [self newSwitchCellWithTitle:[[BHTBundle sharedBundle] localizedStringForKey:@"ENABLE_TRANSLATE_OPTION_TITLE"] detailTitle:[[BHTBundle sharedBundle] localizedStringForKey:@"ENABLE_TRANSLATE_OPTION_DETAIL_TITLE"] key:@"enable_translate" defaultValue:false changeAction:nil];
+        PSSpecifier *autoTranslateTweet = [self newSwitchCellWithTitle:[[BHTBundle sharedBundle] localizedStringForKey:@"AUTO_TRANSLATE_TWEET_OPTION_TITLE"] detailTitle:[[BHTBundle sharedBundle] localizedStringForKey:@"AUTO_TRANSLATE_TWEET_OPTION_DETAIL_TITLE"] key:@"auto_translate_tweet" defaultValue:false changeAction:nil];
 
         PSSpecifier *translateEndpoint = [self newButtonCellWithTitle:[[BHTBundle sharedBundle] localizedStringForKey:@"TRANSLATE_ENDPOINT_OPTION_TITLE"] detailTitle:[[NSUserDefaults standardUserDefaults] objectForKey:@"translate_endpoint"] ?: @"Default Gemini API" dynamicRule:@"enable_translate, ==, 0" action:@selector(showTranslateEndpointInput:)];
 
@@ -606,6 +607,7 @@ PSSpecifier *photosVideosSection = [self newSectionWithTitle:[[BHTBundle sharedB
             squareAvatars,
             replySorting,
             restoreReplyContext,
+            autoTranslateTweet,
 
             profilesSection, // 2
             followConfirm,

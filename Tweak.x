@@ -4711,6 +4711,67 @@ static NSBundle *BHBundle() {
             // Trigger our setTintColor logic
             self.tintColor = [UIColor blackColor];
         }
-    }
+}
 %end
 
+// MARK: Auto Translate Simulation
+static void BHT_SimulateTap(UIView *view) {
+    if (!view) return;
+    if ([view isKindOfClass:[UIControl class]]) {
+        [(UIControl *)view sendActionsForControlEvents:UIControlEventTouchUpInside];
+        return;
+    }
+    for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
+        if ([gesture isKindOfClass:[UITapGestureRecognizer class]]) {
+            NSArray *targets = [gesture valueForKey:@"_targets"];
+            for (id targetObj in targets) {
+                id target = [targetObj valueForKey:@"_target"];
+                SEL action = NSSelectorFromString([targetObj valueForKey:@"_action"]);
+                if (target && action && [target respondsToSelector:action]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                    [target performSelector:action withObject:gesture];
+#pragma clang diagnostic pop
+                }
+            }
+        }
+    }
+    for (UIView *subview in view.subviews) {
+        BHT_SimulateTap(subview);
+    }
+}
+
+%hook T1StandardStatusTranslateView
+
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window && [BHTManager autoTranslateTweet]) {
+        NSNumber *hasAutoTranslated = objc_getAssociatedObject(self, @selector(BHT_SimulateTap:));
+        if (![hasAutoTranslated boolValue]) {
+            objc_setAssociatedObject(self, @selector(BHT_SimulateTap:), @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            
+            // Wait slightly for labels to render
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                __block BOOL isAlreadyTranslated = NO;
+                void (^__block checkLabels)(UIView *) = ^(UIView *v) {
+                    if ([v isKindOfClass:[UILabel class]]) {
+                        UILabel *lbl = (UILabel *)v;
+                        if ([lbl.text.lowercaseString containsString:@"translated"]) {
+                            isAlreadyTranslated = YES;
+                        }
+                    }
+                    for (UIView *sub in v.subviews) {
+                        checkLabels(sub);
+                    }
+                };
+                checkLabels(self);
+                
+                if (!isAlreadyTranslated) {
+                    BHT_SimulateTap(self);
+                }
+            });
+        }
+    }
+}
+
+%end

@@ -325,6 +325,9 @@
 + (BOOL)enableTranslate {
     return [[NSUserDefaults standardUserDefaults] boolForKey:@"enable_translate"];
 }
++ (BOOL)autoTranslateTweet {
+    return [[NSUserDefaults standardUserDefaults] boolForKey:@"auto_translate_tweet"];
+}
 
 + (NSString *)translateEndpoint {
     NSString *endpoint = [[NSUserDefaults standardUserDefaults] stringForKey:@"translate_endpoint"];

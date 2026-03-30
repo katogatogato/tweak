@@ -75,6 +75,7 @@
 
 // Translate functionality
 + (BOOL)enableTranslate;
++ (BOOL)autoTranslateTweet;
 + (NSString *)translateEndpoint;
 + (NSString *)translateAPIKey;
 + (NSString *)translateModel;
