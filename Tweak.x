@@ -678,6 +678,40 @@ static inline NSString *BHTIconNameForKey(NSString *key) {
     return @"copy_stroke";
 }
 
+static NSString *BHT_GetTweetIDString(id tweetObject) {
+    if (!tweetObject) return nil;
+    NSString *tweetIDStr = nil;
+    @try {
+        id statusIDVal = [tweetObject valueForKey:@"statusID"];
+        if (statusIDVal && [statusIDVal respondsToSelector:@selector(longLongValue)] && [statusIDVal longLongValue] > 0) {
+            tweetIDStr = [statusIDVal stringValue];
+        }
+    } @catch (NSException *e) {}
+
+    if (!tweetIDStr || tweetIDStr.length == 0) {
+        @try {
+            tweetIDStr = [tweetObject valueForKey:@"rest_id"];
+            if (!tweetIDStr || tweetIDStr.length == 0) {
+                tweetIDStr = [tweetObject valueForKey:@"id_str"];
+            }
+        } @catch (NSException *e) {}
+    }
+    return tweetIDStr;
+}
+
+static NSString *BHT_GetTweetLanguage(id tweetObject) {
+    if (!tweetObject) return nil;
+    NSString *lang = nil;
+    @try {
+        if ([tweetObject respondsToSelector:@selector(language)]) {
+            lang = [tweetObject valueForKey:@"language"];
+        } else if ([tweetObject respondsToSelector:@selector(lang)]) {
+            lang = [tweetObject valueForKey:@"lang"];
+        }
+    } @catch (NSException *e) {}
+    return lang;
+}
+
 #pragma mark - Theme detection and style helpers
 
 typedef NS_ENUM(NSInteger, BHTTwitterThemeVariant) {
@@ -690,8 +724,10 @@ typedef NS_ENUM(NSInteger, BHTTwitterThemeVariant) {
 static BHTTwitterThemeVariant BHTCurrentTwitterThemeVariant(T1ProfileHeaderView *headerView) {
     UIUserInterfaceStyle style = UIUserInterfaceStyleLight;
 
-    if (headerView && @available(iOS 13.0, *)) {
-        style = headerView.traitCollection.userInterfaceStyle;
+    if (headerView) {
+        if (@available(iOS 13.0, *)) {
+            style = headerView.traitCollection.userInterfaceStyle;
+        }
     }
 
     // System / Twitter light theme
@@ -4033,9 +4069,9 @@ static char kManualRefreshInProgressKey;
                         NSString *tweetID = components[3];
                         if (gTweetLanguageCache) {
                             NSString *lang = [gTweetLanguageCache objectForKey:tweetID];
-                            if (lang && ![lang isEqualToString:@"en"]) {
-                                if (![path hasSuffix:@"/en"]) {
-                                    cleanedURL.path = [path stringByAppendingString:@"/en"];
+                            if (lang && ![lang hasPrefix:@"en"]) {
+                                if ([path rangeOfString:@"/en"].location == NSNotFound) {
+                                    cleanedURL.path = [NSString stringWithFormat:@"/%@/status/%@/en", components[1], components[3]];
                                 }
                             }
                         }
@@ -4722,18 +4758,39 @@ static NSBundle *BHBundle() {
 %hook TTACoreStatusViewModel
 - (id)tweet {
     id origTweet = %orig;
-    if (origTweet && [origTweet respondsToSelector:@selector(statusID)] && [origTweet respondsToSelector:@selector(language)]) {
-        long long statusID = [[origTweet valueForKey:@"statusID"] longLongValue];
-        NSString *lang = [origTweet valueForKey:@"language"];
-        if (statusID > 0 && lang) {
+    @try {
+        NSString *tweetID = BHT_GetTweetIDString(origTweet);
+        NSString *lang = BHT_GetTweetLanguage(origTweet);
+        if (tweetID && tweetID.length > 0 && lang && lang.length > 0) {
             static dispatch_once_t onceToken;
             dispatch_once(&onceToken, ^{
                 gTweetLanguageCache = [[NSCache alloc] init];
                 gTweetLanguageCache.countLimit = 2000;
             });
-            [gTweetLanguageCache setObject:lang forKey:[NSString stringWithFormat:@"%lld", statusID]];
+            [gTweetLanguageCache setObject:lang forKey:tweetID];
         }
-    }
+    } @catch (NSException *e) {}
     return origTweet;
+}
+%end
+
+%hook T1StatusCell
+- (void)setViewModel:(id)viewModel {
+    %orig;
+    @try {
+        if ([viewModel respondsToSelector:@selector(tweet)]) {
+            id origTweet = [viewModel performSelector:@selector(tweet)];
+            NSString *tweetID = BHT_GetTweetIDString(origTweet);
+            NSString *lang = BHT_GetTweetLanguage(origTweet);
+            if (tweetID && tweetID.length > 0 && lang && lang.length > 0) {
+                static dispatch_once_t onceToken;
+                dispatch_once(&onceToken, ^{
+                    gTweetLanguageCache = [[NSCache alloc] init];
+                    gTweetLanguageCache.countLimit = 2000;
+                });
+                [gTweetLanguageCache setObject:lang forKey:tweetID];
+            }
+        }
+    } @catch (NSException *e) {}
 }
 %end
