@@ -4720,12 +4720,11 @@ static dispatch_time_t BHTLastTranslateTime = 0;
 
 #import <objc/runtime.h>
 
-static void BHT_DumpInfoToClipboard(UIView *container) {
+static void BHT_DumpInfoToAlert(UIView *container) {
     if (!container) return;
     
-    NSMutableString *dump = [NSMutableString stringWithString:@"=== BHTwitter Debug Dump ===\n"];
+    NSMutableString *dump = [NSMutableString stringWithString:@"DUMP:\n"];
     
-    // 1. Get Parent View Controller
     UIViewController *parentVC = nil;
     UIResponder *resp = container;
     while ((resp = [resp nextResponder])) {
@@ -4735,61 +4734,47 @@ static void BHT_DumpInfoToClipboard(UIView *container) {
         }
     }
     
-    [dump appendFormat:@"Parent VC: %@\n", parentVC ? [parentVC class] : @"None"];
+    [dump appendFormat:@"VC: %@\n", parentVC ? NSStringFromClass([parentVC class]) : @"None"];
     
-    // 2. Dump VC Methods containing "translat" or "tap"
+    [dump appendString:@"Vs: "];
+    NSMutableArray *queue = [NSMutableArray arrayWithObject:container];
+    while (queue.count > 0 && dump.length < 500) {
+        UIView *v = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+        NSString *cls = NSStringFromClass([v class]);
+        [dump appendFormat:@"%@ ", cls];
+        [queue addObjectsFromArray:v.subviews];
+    }
+    
     if (parentVC) {
-        [dump appendString:@"\nVC Methods:\n"];
+        [dump appendString:@"\nMs: "];
         unsigned int mc = 0;
         Method *methods = class_copyMethodList([parentVC class], &mc);
         for (unsigned int i = 0; i < mc; i++) {
             NSString *mName = NSStringFromSelector(method_getName(methods[i]));
             if ([mName.lowercaseString containsString:@"translat"] || [mName.lowercaseString containsString:@"tap"]) {
-                [dump appendFormat:@"- %@\n", mName];
+                if (dump.length < 800) {
+                    [dump appendFormat:@"%@\n", mName];
+                }
             }
         }
         free(methods);
     }
     
-    // 3. Dump View Hierarchy and Controls
-    [dump appendString:@"\nSubviews:\n"];
-    NSMutableArray *queue = [NSMutableArray arrayWithObject:container];
-    while (queue.count > 0) {
-        UIView *v = queue.firstObject;
-        [queue removeObjectAtIndex:0];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Debug" message:dump preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
         
-        [dump appendFormat:@"[%@] ", [v class]];
-        if ([v isKindOfClass:[UILabel class]]) {
-            [dump appendFormat:@"Text: \"%@\" ", [(UILabel *)v text]];
+        UIViewController *topVC = [UIApplication sharedApplication].keyWindow.rootViewController;
+        while (topVC.presentedViewController) {
+            topVC = topVC.presentedViewController;
         }
-        if ([v isKindOfClass:[UIButton class]]) {
-            [dump appendFormat:@"Title: \"%@\" ", [(UIButton *)v currentTitle]];
-        }
-        
-        // Dump Gestures
-        for (UIGestureRecognizer *g in v.gestureRecognizers) {
-            [dump appendFormat:@"<Gesture: %@> ", [g class]];
-        }
-        
-        // Dump Targets
-        if ([v isKindOfClass:[UIControl class]]) {
-            UIControl *c = (UIControl *)v;
-            for (id target in c.allTargets) {
-                NSArray *actions = [c actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
-                [dump appendFormat:@"<Target: %@ Actions: %@> ", [target class], actions];
-            }
-        }
-        
-        [dump appendString:@"\n"];
-        [queue addObjectsFromArray:v.subviews];
-    }
-    
-    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
-    pasteboard.string = dump;
+        [topVC presentViewController:alert animated:YES completion:nil];
+    });
 }
 
 static BOOL BHT_SimulateTap(UIView *view) {
-    BHT_DumpInfoToClipboard(view);
+    BHT_DumpInfoToAlert(view);
     return YES;
 }
 
