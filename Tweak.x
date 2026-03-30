@@ -4715,6 +4715,20 @@ static NSBundle *BHBundle() {
 %end
 
 // MARK: Auto Translate Simulation
+static BOOL BHT_IsTranslated(UIView *view) {
+    if (!view) return NO;
+    if ([view isKindOfClass:[UILabel class]]) {
+        UILabel *lbl = (UILabel *)view;
+        if ([lbl.text.lowercaseString containsString:@"translated"]) {
+            return YES;
+        }
+    }
+    for (UIView *sub in view.subviews) {
+        if (BHT_IsTranslated(sub)) return YES;
+    }
+    return NO;
+}
+
 static void BHT_SimulateTap(UIView *view) {
     if (!view) return;
     if ([view isKindOfClass:[UIControl class]]) {
@@ -4723,16 +4737,20 @@ static void BHT_SimulateTap(UIView *view) {
     }
     for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
         if ([gesture isKindOfClass:[UITapGestureRecognizer class]]) {
-            NSArray *targets = [gesture valueForKey:@"_targets"];
-            for (id targetObj in targets) {
-                id target = [targetObj valueForKey:@"_target"];
-                SEL action = NSSelectorFromString([targetObj valueForKey:@"_action"]);
-                if (target && action && [target respondsToSelector:action]) {
+            if ([gesture respondsToSelector:NSSelectorFromString(@"_targets")]) {
+                @try {
+                    NSArray *targets = [gesture valueForKey:@"_targets"];
+                    for (id targetObj in targets) {
+                        id target = [targetObj valueForKey:@"_target"];
+                        SEL action = NSSelectorFromString([targetObj valueForKey:@"_action"]);
+                        if (target && action && [target respondsToSelector:action]) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                    [target performSelector:action withObject:gesture];
+                            [target performSelector:action withObject:gesture];
 #pragma clang diagnostic pop
-                }
+                        }
+                    }
+                } @catch (NSException *e) {}
             }
         }
     }
@@ -4750,23 +4768,8 @@ static void BHT_SimulateTap(UIView *view) {
         if (![hasAutoTranslated boolValue]) {
             objc_setAssociatedObject(self, @selector(BHT_SimulateTap:), @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             
-            // Wait slightly for labels to render
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                __block BOOL isAlreadyTranslated = NO;
-                void (^__block checkLabels)(UIView *) = ^(UIView *v) {
-                    if ([v isKindOfClass:[UILabel class]]) {
-                        UILabel *lbl = (UILabel *)v;
-                        if ([lbl.text.lowercaseString containsString:@"translated"]) {
-                            isAlreadyTranslated = YES;
-                        }
-                    }
-                    for (UIView *sub in v.subviews) {
-                        checkLabels(sub);
-                    }
-                };
-                checkLabels(self);
-                
-                if (!isAlreadyTranslated) {
+                if (!BHT_IsTranslated(self)) {
                     BHT_SimulateTap(self);
                 }
             });
