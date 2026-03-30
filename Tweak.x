@@ -4718,22 +4718,79 @@ static NSBundle *BHBundle() {
 static const void *BHTAutoTranslateKey = &BHTAutoTranslateKey;
 static dispatch_time_t BHTLastTranslateTime = 0;
 
+#import <objc/runtime.h>
+
+static void BHT_DumpInfoToClipboard(UIView *container) {
+    if (!container) return;
+    
+    NSMutableString *dump = [NSMutableString stringWithString:@"=== BHTwitter Debug Dump ===\n"];
+    
+    // 1. Get Parent View Controller
+    UIViewController *parentVC = nil;
+    UIResponder *resp = container;
+    while ((resp = [resp nextResponder])) {
+        if ([resp isKindOfClass:[UIViewController class]]) {
+            parentVC = (UIViewController *)resp;
+            break;
+        }
+    }
+    
+    [dump appendFormat:@"Parent VC: %@\n", parentVC ? [parentVC class] : @"None"];
+    
+    // 2. Dump VC Methods containing "translat" or "tap"
+    if (parentVC) {
+        [dump appendString:@"\nVC Methods:\n"];
+        unsigned int mc = 0;
+        Method *methods = class_copyMethodList([parentVC class], &mc);
+        for (unsigned int i = 0; i < mc; i++) {
+            NSString *mName = NSStringFromSelector(method_getName(methods[i]));
+            if ([mName.lowercaseString containsString:@"translat"] || [mName.lowercaseString containsString:@"tap"]) {
+                [dump appendFormat:@"- %@\n", mName];
+            }
+        }
+        free(methods);
+    }
+    
+    // 3. Dump View Hierarchy and Controls
+    [dump appendString:@"\nSubviews:\n"];
+    NSMutableArray *queue = [NSMutableArray arrayWithObject:container];
+    while (queue.count > 0) {
+        UIView *v = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+        
+        [dump appendFormat:@"[%@] ", [v class]];
+        if ([v isKindOfClass:[UILabel class]]) {
+            [dump appendFormat:@"Text: \"%@\" ", [(UILabel *)v text]];
+        }
+        if ([v isKindOfClass:[UIButton class]]) {
+            [dump appendFormat:@"Title: \"%@\" ", [(UIButton *)v currentTitle]];
+        }
+        
+        // Dump Gestures
+        for (UIGestureRecognizer *g in v.gestureRecognizers) {
+            [dump appendFormat:@"<Gesture: %@> ", [g class]];
+        }
+        
+        // Dump Targets
+        if ([v isKindOfClass:[UIControl class]]) {
+            UIControl *c = (UIControl *)v;
+            for (id target in c.allTargets) {
+                NSArray *actions = [c actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
+                [dump appendFormat:@"<Target: %@ Actions: %@> ", [target class], actions];
+            }
+        }
+        
+        [dump appendString:@"\n"];
+        [queue addObjectsFromArray:v.subviews];
+    }
+    
+    UIPasteboard *pasteboard = [UIPasteboard generalPasteboard];
+    pasteboard.string = dump;
+}
+
 static BOOL BHT_SimulateTap(UIView *view) {
-    if (![view isKindOfClass:[UIView class]]) return NO;
-    if ([view isKindOfClass:[UIControl class]] && ![view isKindOfClass:NSClassFromString(@"T1StandardStatusTranslateView")]) {
-        UIControl *control = (UIControl *)view;
-        if (control.enabled && control.userInteractionEnabled && !control.hidden && control.alpha > 0.01) {
-            [control sendActionsForControlEvents:UIControlEventTouchUpInside];
-            return YES;
-        }
-    }
-    NSArray *subviews = [view.subviews copy];
-    for (UIView *subview in subviews) {
-        if (BHT_SimulateTap(subview)) {
-            return YES;
-        }
-    }
-    return NO;
+    BHT_DumpInfoToClipboard(view);
+    return YES;
 }
 
 %hook T1StandardStatusTranslateView
