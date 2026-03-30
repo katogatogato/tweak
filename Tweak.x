@@ -4715,48 +4715,39 @@ static NSBundle *BHBundle() {
 %end
 
 // MARK: Auto Translate Simulation
+static const void *BHTAutoTranslateKey = &BHTAutoTranslateKey;
+
 static BOOL BHT_IsTranslated(UIView *view) {
-    if (!view) return NO;
+    if (![view isKindOfClass:[UIView class]]) return NO;
     if ([view isKindOfClass:[UILabel class]]) {
         UILabel *lbl = (UILabel *)view;
-        if ([lbl.text.lowercaseString containsString:@"translated"]) {
+        if ([lbl.text isKindOfClass:[NSString class]] && [lbl.text.lowercaseString containsString:@"translated"]) {
             return YES;
         }
     }
-    for (UIView *sub in view.subviews) {
+    NSArray *subviews = [view.subviews copy];
+    for (UIView *sub in subviews) {
         if (BHT_IsTranslated(sub)) return YES;
     }
     return NO;
 }
 
-static void BHT_SimulateTap(UIView *view) {
-    if (!view) return;
+static BOOL BHT_SimulateTap(UIView *view) {
+    if (![view isKindOfClass:[UIView class]]) return NO;
     if ([view isKindOfClass:[UIControl class]]) {
-        [(UIControl *)view sendActionsForControlEvents:UIControlEventTouchUpInside];
-        return;
-    }
-    for (UIGestureRecognizer *gesture in view.gestureRecognizers) {
-        if ([gesture isKindOfClass:[UITapGestureRecognizer class]]) {
-            if ([gesture respondsToSelector:NSSelectorFromString(@"_targets")]) {
-                @try {
-                    NSArray *targets = [gesture valueForKey:@"_targets"];
-                    for (id targetObj in targets) {
-                        id target = [targetObj valueForKey:@"_target"];
-                        SEL action = NSSelectorFromString([targetObj valueForKey:@"_action"]);
-                        if (target && action && [target respondsToSelector:action]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                            [target performSelector:action withObject:gesture];
-#pragma clang diagnostic pop
-                        }
-                    }
-                } @catch (NSException *e) {}
-            }
+        UIControl *control = (UIControl *)view;
+        if (control.enabled && control.userInteractionEnabled && !control.hidden && control.alpha > 0.01) {
+            [control sendActionsForControlEvents:UIControlEventTouchUpInside];
+            return YES;
         }
     }
-    for (UIView *subview in view.subviews) {
-        BHT_SimulateTap(subview);
+    NSArray *subviews = [view.subviews copy];
+    for (UIView *subview in subviews) {
+        if (BHT_SimulateTap(subview)) {
+            return YES;
+        }
     }
+    return NO;
 }
 
 %hook T1StandardStatusTranslateView
@@ -4764,13 +4755,17 @@ static void BHT_SimulateTap(UIView *view) {
 - (void)didMoveToWindow {
     %orig;
     if (self.window && [BHTManager autoTranslateTweet]) {
-        NSNumber *hasAutoTranslated = objc_getAssociatedObject(self, @selector(BHT_SimulateTap:));
+        NSNumber *hasAutoTranslated = objc_getAssociatedObject(self, BHTAutoTranslateKey);
         if (![hasAutoTranslated boolValue]) {
-            objc_setAssociatedObject(self, @selector(BHT_SimulateTap:), @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(self, BHTAutoTranslateKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             
+            __weak typeof(self) weakSelf = self;
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                if (!BHT_IsTranslated(self)) {
-                    BHT_SimulateTap(self);
+                UIView *strongSelf = weakSelf;
+                if (!strongSelf) return;
+                
+                if (!BHT_IsTranslated(strongSelf)) {
+                    BHT_SimulateTap(strongSelf);
                 }
             });
         }
