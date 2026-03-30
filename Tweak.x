@@ -4720,24 +4720,11 @@ static dispatch_time_t BHTLastTranslateTime = 0;
 
 static BOOL BHT_SimulateTap(UIView *view) {
     if (![view isKindOfClass:[UIView class]]) return NO;
-    if ([view isKindOfClass:[UIControl class]]) {
+    if ([view isKindOfClass:[UIControl class]] && ![view isKindOfClass:NSClassFromString(@"T1StandardStatusTranslateView")]) {
         UIControl *control = (UIControl *)view;
         if (control.enabled && control.userInteractionEnabled && !control.hidden && control.alpha > 0.01) {
-            BOOL invoked = NO;
-            for (id target in [control allTargets]) {
-                NSArray *actions = [control actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
-                for (NSString *actionStr in actions) {
-                    SEL action = NSSelectorFromString(actionStr);
-                    if ([target respondsToSelector:action]) {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
-                        [target performSelector:action withObject:control];
-#pragma clang diagnostic pop
-                        invoked = YES;
-                    }
-                }
-            }
-            if (invoked) return YES;
+            [control sendActionsForControlEvents:UIControlEventTouchUpInside];
+            return YES;
         }
     }
     NSArray *subviews = [view.subviews copy];
