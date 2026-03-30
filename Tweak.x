@@ -4007,23 +4007,40 @@ static char kManualRefreshInProgressKey;
                 NSURL *pasteboardURL = UIPasteboard.generalPasteboard.URL;
                 NSArray<NSString*>* params = trackingParams[pasteboardURL.host];
 
-                if ([pasteboardURL.absoluteString isEqualToString:_lastCopiedURL] == NO && params != nil && pasteboardURL.query != nil) {
+                if ([pasteboardURL.absoluteString isEqualToString:_lastCopiedURL] == NO && params != nil) {
                     // to prevent endless copy loop
                     _lastCopiedURL = pasteboardURL.absoluteString;
                     NSURLComponents *cleanedURL = [NSURLComponents componentsWithURL:pasteboardURL resolvingAgainstBaseURL:NO];
                     NSMutableArray<NSURLQueryItem*> *safeParams = [NSMutableArray arrayWithCapacity:0];
 
-                    for (NSURLQueryItem *item in cleanedURL.queryItems) {
-                        if ([params containsObject:item.name] == NO) {
-                            [safeParams addObject:item];
+                    if (cleanedURL.queryItems) {
+                        for (NSURLQueryItem *item in cleanedURL.queryItems) {
+                            if ([params containsObject:item.name] == NO) {
+                                [safeParams addObject:item];
+                            }
                         }
+                        cleanedURL.queryItems = safeParams.count > 0 ? safeParams : nil;
                     }
-                    cleanedURL.queryItems = safeParams.count > 0 ? safeParams : nil;
 
                     if ([[NSUserDefaults standardUserDefaults] objectForKey:@"tweet_url_host"]) {
                         NSString *selectedHost = [[NSUserDefaults standardUserDefaults] objectForKey:@"tweet_url_host"];
                         cleanedURL.host = selectedHost;
                     }
+                    
+                    NSString *path = cleanedURL.path;
+                    NSArray *components = [path componentsSeparatedByString:@"/"];
+                    if (components.count >= 4 && [components[2] isEqualToString:@"status"]) {
+                        NSString *tweetID = components[3];
+                        if (gTweetLanguageCache) {
+                            NSString *lang = [gTweetLanguageCache objectForKey:tweetID];
+                            if (lang && ![lang isEqualToString:@"en"]) {
+                                if (![path hasSuffix:@"/en"]) {
+                                    cleanedURL.path = [path stringByAppendingString:@"/en"];
+                                }
+                            }
+                        }
+                    }
+
                     UIPasteboard.generalPasteboard.URL = cleanedURL.URL;
                 }
             }
@@ -4701,4 +4718,22 @@ static NSBundle *BHBundle() {
             self.tintColor = [UIColor blackColor];
         }
     }
+%end
+%hook TTACoreStatusViewModel
+- (id)tweet {
+    id origTweet = %orig;
+    if (origTweet && [origTweet respondsToSelector:@selector(statusID)] && [origTweet respondsToSelector:@selector(language)]) {
+        long long statusID = [[origTweet valueForKey:@"statusID"] longLongValue];
+        NSString *lang = [origTweet valueForKey:@"language"];
+        if (statusID > 0 && lang) {
+            static dispatch_once_t onceToken;
+            dispatch_once(&onceToken, ^{
+                gTweetLanguageCache = [[NSCache alloc] init];
+                gTweetLanguageCache.countLimit = 2000;
+            });
+            [gTweetLanguageCache setObject:lang forKey:[NSString stringWithFormat:@"%lld", statusID]];
+        }
+    }
+    return origTweet;
+}
 %end

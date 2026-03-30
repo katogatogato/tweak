@@ -2525,7 +2525,8 @@ if ([type isEqualToString:@"compactButton"]) {
         @"twitter.com",
         @"fxtwitter.com",
         @"vxtwitter.com",
-        @"fixvx.com"
+        @"fixvx.com",
+        @"fixupx.com"
     ];
 
     // Create or reuse a button that will host the menu.
