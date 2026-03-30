@@ -4716,29 +4716,28 @@ static NSBundle *BHBundle() {
 
 // MARK: Auto Translate Simulation
 static const void *BHTAutoTranslateKey = &BHTAutoTranslateKey;
-
-static BOOL BHT_IsTranslated(UIView *view) {
-    if (![view isKindOfClass:[UIView class]]) return NO;
-    if ([view isKindOfClass:[UILabel class]]) {
-        UILabel *lbl = (UILabel *)view;
-        if ([lbl.text isKindOfClass:[NSString class]] && [lbl.text.lowercaseString containsString:@"translated"]) {
-            return YES;
-        }
-    }
-    NSArray *subviews = [view.subviews copy];
-    for (UIView *sub in subviews) {
-        if (BHT_IsTranslated(sub)) return YES;
-    }
-    return NO;
-}
+static dispatch_time_t BHTLastTranslateTime = 0;
 
 static BOOL BHT_SimulateTap(UIView *view) {
     if (![view isKindOfClass:[UIView class]]) return NO;
     if ([view isKindOfClass:[UIControl class]]) {
         UIControl *control = (UIControl *)view;
         if (control.enabled && control.userInteractionEnabled && !control.hidden && control.alpha > 0.01) {
-            [control sendActionsForControlEvents:UIControlEventTouchUpInside];
-            return YES;
+            BOOL invoked = NO;
+            for (id target in [control allTargets]) {
+                NSArray *actions = [control actionsForTarget:target forControlEvent:UIControlEventTouchUpInside];
+                for (NSString *actionStr in actions) {
+                    SEL action = NSSelectorFromString(actionStr);
+                    if ([target respondsToSelector:action]) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
+                        [target performSelector:action withObject:control];
+#pragma clang diagnostic pop
+                        invoked = YES;
+                    }
+                }
+            }
+            if (invoked) return YES;
         }
     }
     NSArray *subviews = [view.subviews copy];
@@ -4764,12 +4763,18 @@ static BOOL BHT_SimulateTap(UIView *view) {
                 UIView *strongSelf = weakSelf;
                 if (!strongSelf) return;
                 
-                if (!BHT_IsTranslated(strongSelf)) {
-                    BHT_SimulateTap(strongSelf);
+                dispatch_time_t now = dispatch_time(DISPATCH_TIME_NOW, 0);
+                if (now > BHTLastTranslateTime) {
+                    if (now - BHTLastTranslateTime < (int64_t)(1.5 * NSEC_PER_SEC)) {
+                        return; // Cooldown active, prevent infinite loops
+                    }
                 }
+                
+                BHTLastTranslateTime = now;
+                BHT_SimulateTap(strongSelf);
             });
         }
     }
 }
-
 %end
+
